@@ -5,21 +5,20 @@ except ImportError:
     TF_AVAILABLE = False
     print("TensorFlow not available. Running in simulation mode.")
 
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    print("MetaTrader5 not available. Running in simulation mode.")
+
 import numpy as np
 import pandas as pd
-import MetaTrader5 as mt5
 from datetime import datetime, timedelta
-import pandas_ta as ta
-from sklearn.preprocessing import StandardScaler
-from typing import Dict, List, Tuple, Optional
 import logging
-import os
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Bidirectional, Attention, Concatenate
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
-import joblib
+from typing import Dict, List, Optional, Tuple
 import json
+import os
 
 class ForexModelTrainer:
     def __init__(self, model_path: str = "models/forex_model.h5"):
@@ -32,19 +31,6 @@ class ForexModelTrainer:
         self.model_path = model_path
         self.model = None
         self.scaler = None
-        self.lookback_period = 60
-        self.prediction_horizon = 1
-        self.feature_scaler = StandardScaler()
-        self.feature_columns = [
-            'open', 'high', 'low', 'close', 'volume',
-            'rsi', 'macd', 'macd_signal', 'macd_hist',
-            'bb_upper', 'bb_middle', 'bb_lower',
-            'atr', 'adx', 'cci', 'mfi',
-            'stoch_k', 'stoch_d', 'williams_r',
-            'obv', 'vwap', 'supertrend',
-            'returns', 'log_returns', 'volatility',
-            'momentum', 'trend_strength'
-        ]
         
         # Set up logging
         logging.basicConfig(
@@ -78,7 +64,7 @@ class ForexModelTrainer:
             else:
                 # Create new model
                 self.model = tf.keras.Sequential([
-                    tf.keras.layers.LSTM(64, input_shape=(self.lookback_period, len(self.feature_columns)), return_sequences=True),
+                    tf.keras.layers.LSTM(64, input_shape=(60, 5), return_sequences=True),
                     tf.keras.layers.Dropout(0.2),
                     tf.keras.layers.LSTM(32),
                     tf.keras.layers.Dropout(0.2),
@@ -102,207 +88,6 @@ class ForexModelTrainer:
         logging.info("Running in simulation mode")
         self.model = None
 
-    def _calculate_advanced_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate advanced technical indicators and features"""
-        try:
-            # Basic price features
-            df['returns'] = df['close'].pct_change()
-            df['log_returns'] = np.log(df['close'] / df['close'].shift(1))
-            
-            # Volatility features
-            df['volatility'] = df['returns'].rolling(window=20).std()
-            df['realized_vol'] = df['returns'].rolling(window=20).apply(lambda x: np.sqrt(np.sum(x**2)))
-            
-            # RSI
-            try:
-                df['rsi'] = ta.rsi(df['close'], length=14)
-            except Exception as e:
-                logging.warning(f"Error calculating RSI: {str(e)}. Using default value.")
-                df['rsi'] = 50.0  # Default neutral value
-            
-            # MACD
-            try:
-                macd = ta.macd(df['close'])
-                df['macd'] = macd['MACD_12_26_9']
-                df['macd_signal'] = macd['MACDs_12_26_9']
-                df['macd_hist'] = macd['MACDh_12_26_9']
-            except Exception as e:
-                logging.warning(f"Error calculating MACD: {str(e)}. Using default values.")
-                df['macd'] = 0.0
-                df['macd_signal'] = 0.0
-                df['macd_hist'] = 0.0
-            
-            # Bollinger Bands
-            try:
-                sma = df['close'].rolling(window=20).mean()
-                std = df['close'].rolling(window=20).std()
-                df['bb_upper'] = sma + (std * 2)
-                df['bb_middle'] = sma
-                df['bb_lower'] = sma - (std * 2)
-                df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
-            except Exception as e:
-                logging.warning(f"Error calculating Bollinger Bands: {str(e)}. Using default values.")
-                df['bb_upper'] = df['close']
-                df['bb_middle'] = df['close']
-                df['bb_lower'] = df['close']
-                df['bb_width'] = 0.0
-            
-            # ATR
-            try:
-                df['atr'] = ta.atr(df['high'], df['low'], df['close'])
-            except Exception as e:
-                logging.warning(f"Error calculating ATR: {str(e)}. Using default value.")
-                df['atr'] = (df['high'] - df['low']).mean()
-            
-            # ADX
-            try:
-                adx = ta.adx(df['high'], df['low'], df['close'])
-                df['adx'] = adx['ADX_14']
-            except Exception as e:
-                logging.warning(f"Error calculating ADX: {str(e)}. Using default value.")
-                df['adx'] = 25.0  # Default neutral value
-            
-            # CCI
-            try:
-                df['cci'] = ta.cci(df['high'], df['low'], df['close'])
-            except Exception as e:
-                logging.warning(f"Error calculating CCI: {str(e)}. Using default value.")
-                df['cci'] = 0.0
-            
-            # MFI
-            try:
-                df['mfi'] = ta.mfi(df['high'], df['low'], df['close'], df['volume'])
-            except Exception as e:
-                logging.warning(f"Error calculating MFI: {str(e)}. Using default value.")
-                df['mfi'] = 50.0  # Default neutral value
-            
-            # Stochastic
-            try:
-                stoch = ta.stoch(df['high'], df['low'], df['close'])
-                df['stoch_k'] = stoch['STOCHk_14_3_3']
-                df['stoch_d'] = stoch['STOCHd_14_3_3']
-            except Exception as e:
-                logging.warning(f"Error calculating Stochastic: {str(e)}. Using default values.")
-                df['stoch_k'] = 50.0
-                df['stoch_d'] = 50.0
-            
-            # Williams %R
-            try:
-                df['williams_r'] = ta.willr(df['high'], df['low'], df['close'])
-            except Exception as e:
-                logging.warning(f"Error calculating Williams %R: {str(e)}. Using default value.")
-                df['williams_r'] = -50.0  # Default neutral value
-            
-            # OBV
-            try:
-                df['obv'] = ta.obv(df['close'], df['volume'])
-            except Exception as e:
-                logging.warning(f"Error calculating OBV: {str(e)}. Using default value.")
-                df['obv'] = df['volume'].cumsum()
-            
-            # VWAP
-            try:
-                df['vwap'] = ta.vwap(df['high'], df['low'], df['close'], df['volume'])
-            except Exception as e:
-                logging.warning(f"Error calculating VWAP: {str(e)}. Using default value.")
-                df['vwap'] = df['close']
-            
-            # Supertrend
-            try:
-                supertrend = ta.supertrend(df['high'], df['low'], df['close'])
-                df['supertrend'] = supertrend['SUPERT_7_3.0']
-            except Exception as e:
-                logging.warning(f"Error calculating Supertrend: {str(e)}. Using default value.")
-                df['supertrend'] = df['close']
-            
-            # Trend features
-            df['trend_strength'] = df['adx'].rolling(window=14).mean()
-            df['trend_direction'] = np.where(df['close'] > df['close'].shift(1), 1, -1)
-            
-            # Momentum features
-            df['momentum'] = df['close'] - df['close'].shift(10)
-            df['momentum_ma'] = df['momentum'].rolling(window=10).mean()
-            
-            # Volume features
-            df['volume_ma'] = df['volume'].rolling(window=20).mean()
-            df['volume_ratio'] = df['volume'] / df['volume_ma']
-            
-            # Additional custom features
-            df['price_momentum'] = df['close'].pct_change(periods=5)
-            df['volume_momentum'] = df['volume'].pct_change(periods=5)
-            df['volatility_ratio'] = df['atr'] / df['atr'].rolling(window=20).mean()
-            
-            return df.fillna(0)
-            
-        except Exception as e:
-            logging.error(f"Error in _calculate_advanced_features: {str(e)}")
-            raise
-
-    def _create_sequences(self, data: np.ndarray, target: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Create sequences for LSTM input"""
-        X, y = [], []
-        for i in range(len(data) - self.lookback_period - self.prediction_horizon + 1):
-            X.append(data[i:(i + self.lookback_period)])
-            y.append(target[i + self.lookback_period + self.prediction_horizon - 1])
-        return np.array(X), np.array(y)
-
-    def _build_model(self, input_shape: Tuple[int, int]) -> Model:
-        """Build a sophisticated deep learning model"""
-        # Input layer
-        inputs = Input(shape=input_shape)
-        
-        # First LSTM layer with return sequences
-        x = Bidirectional(LSTM(128, return_sequences=True))(inputs)
-        x = Dropout(0.2)(x)
-        
-        # Second LSTM layer
-        x = Bidirectional(LSTM(64, return_sequences=True))(x)
-        x = Dropout(0.2)(x)
-        
-        # Third LSTM layer
-        x = Bidirectional(LSTM(32))(x)
-        x = Dropout(0.2)(x)
-        
-        # Dense layers
-        x = Dense(64, activation='relu')(x)
-        x = Dropout(0.2)(x)
-        x = Dense(32, activation='relu')(x)
-        x = Dropout(0.2)(x)
-        
-        # Output layer
-        outputs = Dense(1, activation='tanh')(x)
-        
-        # Create model
-        model = Model(inputs=inputs, outputs=outputs)
-        
-        # Compile model
-        model.compile(
-            optimizer=Adam(learning_rate=0.001),
-            loss='mse',
-            metrics=['mae']
-        )
-        
-        return model
-
-    def prepare_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
-        """Prepare data for model training"""
-        # Calculate features
-        df = self._calculate_advanced_features(df)
-        
-        # Select features
-        feature_data = df[self.feature_columns].values
-        
-        # Scale features
-        scaled_features = self.feature_scaler.fit_transform(feature_data)
-        
-        # Create target (next period's return)
-        target = df['returns'].shift(-self.prediction_horizon).values
-        
-        # Create sequences
-        X, y = self._create_sequences(scaled_features, target)
-        
-        return X, y
-
     def train(self, symbol: str, start_date: datetime, end_date: datetime) -> bool:
         """
         Train the model for a specific symbol
@@ -325,13 +110,13 @@ class ForexModelTrainer:
                 return False
             
             # Get training data
-            df = self._get_training_data(symbol, start_date, end_date)
-            if df is None or len(df) < 100:
+            data = self._get_training_data(symbol, start_date, end_date)
+            if data is None or len(data) < 100:
                 logging.error("Insufficient training data")
                 return False
             
             # Prepare data
-            X, y = self.prepare_data(df)
+            X, y = self._prepare_data(data)
             
             # Train model
             history = self.model.fit(
@@ -385,7 +170,7 @@ class ForexModelTrainer:
                           end_date: datetime) -> Optional[pd.DataFrame]:
         """Get training data for a symbol"""
         try:
-            if TF_AVAILABLE:
+            if MT5_AVAILABLE:
                 # Get historical data
                 rates = mt5.copy_rates_range(symbol, mt5.TIMEFRAME_H1, start_date, end_date)
                 if rates is None:
@@ -414,10 +199,34 @@ class ForexModelTrainer:
             logging.error(f"Error getting training data: {str(e)}")
             return None
 
+    def _prepare_data(self, data: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        """Prepare data for training"""
+        try:
+            # Calculate features
+            data['returns'] = data['close'].pct_change()
+            data['volatility'] = data['returns'].rolling(20).std()
+            data['trend'] = data['close'].rolling(20).mean()
+            data['momentum'] = data['close'] - data['close'].shift(10)
+            
+            # Create sequences
+            X = []
+            y = []
+            sequence_length = 60
+            
+            for i in range(len(data) - sequence_length):
+                X.append(data[['open', 'high', 'low', 'close', 'tick_volume']].iloc[i:i+sequence_length].values)
+                y.append(1 if data['close'].iloc[i+sequence_length] > data['close'].iloc[i+sequence_length-1] else 0)
+            
+            return np.array(X), np.array(y)
+            
+        except Exception as e:
+            logging.error(f"Error preparing data: {str(e)}")
+            return np.array([]), np.array([])
+
     def _prepare_prediction_data(self, data: pd.DataFrame) -> Optional[np.ndarray]:
         """Prepare data for prediction"""
         try:
-            if len(data) < self.lookback_period:
+            if len(data) < 60:
                 return None
             
             # Calculate features
@@ -427,7 +236,7 @@ class ForexModelTrainer:
             data['momentum'] = data['close'] - data['close'].shift(10)
             
             # Create sequence
-            X = data[self.feature_columns].iloc[-self.lookback_period:].values
+            X = data[['open', 'high', 'low', 'close', 'tick_volume']].iloc[-60:].values
             return np.array([X])
             
         except Exception as e:
