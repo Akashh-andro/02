@@ -9,12 +9,12 @@ import time
 import streamlit as st
 import os
 
-# Add the project root directory to Python path
+# Add project root to Python path
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(project_root)
 
 # Import the Streamlit app
-from app.streamlit_app import main as streamlit_main
+from streamlit_app import main
 
 from model_trainer import ForexModelTrainer
 from backtester import ForexBacktester
@@ -303,4 +303,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    streamlit_main() 
+    main() 

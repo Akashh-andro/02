@@ -16,10 +16,6 @@ logging.basicConfig(
     ]
 )
 
-# Add project root to Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
-
 # Import trading system components
 from risk_manager import RiskManager
 from model_trainer import ForexModelTrainer
