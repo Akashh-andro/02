@@ -6,6 +6,8 @@ import MetaTrader5 as mt5
 from typing import List, Dict, Optional
 import json
 import time
+import streamlit as st
+from app.streamlit_app import main as streamlit_main
 
 from model_trainer import ForexModelTrainer
 from backtester import ForexBacktester
@@ -294,4 +296,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main() 
+    streamlit_main() 

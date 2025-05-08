@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.env
 
 # IDE
 .idea/
@@ -35,16 +36,7 @@ env/
 *.log
 logs/
 trading.log
-
-# Environment variables
-.env
-.env.local
-
-# Data
-data/
-*.csv
-*.json
-!config.json
+*.log.*
 
 # Cache
 .cache/
@@ -60,8 +52,20 @@ build/
 .ipynb_checkpoints
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
+
+# Trading Data
+data/
+*.csv
+*.json
+!config.json
 
 # System
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~ 
