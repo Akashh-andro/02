@@ -1,9 +1,15 @@
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    print("MetaTrader5 not available. Running in simulation mode.")
+
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import MetaTrader5 as mt5
-from typing import Dict, List, Tuple, Optional
 import logging
+from typing import Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
@@ -12,7 +18,15 @@ import os
 import ta
 
 class ForexBacktester:
-    def __init__(self, initial_balance: float = 10000.0):
+    def __init__(self, model_trainer, initial_balance: float = 10000.0):
+        """
+        Initialize the ForexBacktester
+        
+        Args:
+            model_trainer: Instance of ForexModelTrainer
+            initial_balance (float): Initial account balance
+        """
+        self.model_trainer = model_trainer
         self.initial_balance = initial_balance
         self.balance = initial_balance
         self.equity_curve = []
