@@ -1,25 +1,49 @@
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    print("MetaTrader5 not available. Running in simulation mode.")
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import json
 from scipy import stats
 import pandas_ta as ta
 
 class RiskManager:
-    def __init__(self, max_risk_per_trade: float = 1.0, max_daily_risk: float = 5.0,
-                 max_correlation: float = 0.7, max_drawdown: float = 20.0):
+    def __init__(self, max_risk_per_trade: float = 0.02, max_daily_risk: float = 0.05,
+                 max_correlation: float = 0.7, max_drawdown: float = 0.15):
+        """
+        Initialize the RiskManager with risk parameters
+        
+        Args:
+            max_risk_per_trade (float): Maximum risk per trade as a percentage of account balance
+            max_daily_risk (float): Maximum daily risk as a percentage of account balance
+            max_correlation (float): Maximum allowed correlation between positions
+            max_drawdown (float): Maximum allowed drawdown as a percentage
+        """
         self.max_risk_per_trade = max_risk_per_trade
         self.max_daily_risk = max_daily_risk
         self.max_correlation = max_correlation
         self.max_drawdown = max_drawdown
         
-        # Initialize MT5
-        if not mt5.initialize():
-            logging.error("Failed to initialize MT5")
-            raise Exception("MT5 initialization failed")
+        # Initialize risk metrics
+        self.daily_pnl = 0.0
+        self.trades_today = 0
+        self.current_drawdown = 0.0
+        self.max_drawdown_seen = 0.0
+        self.peak_balance = 0.0
+        self.current_balance = 0.0
+        
+        # Initialize MT5 if available
+        if MT5_AVAILABLE:
+            self._initialize_mt5()
+        else:
+            self._initialize_simulation()
         
         # Set up logging
         logging.basicConfig(
@@ -34,6 +58,35 @@ class RiskManager:
         # Load risk metrics if exists
         self._load_risk_metrics()
 
+    def _initialize_mt5(self):
+        """Initialize MetaTrader 5 connection"""
+        if not MT5_AVAILABLE:
+            return
+            
+        try:
+            if not mt5.initialize():
+                logging.error("Failed to initialize MT5")
+                return
+            
+            # Get initial account info
+            account_info = mt5.account_info()
+            if account_info is None:
+                logging.error("Failed to get account info")
+                return
+            
+            self.current_balance = account_info.balance
+            self.peak_balance = account_info.balance
+            logging.info(f"MT5 initialized. Account balance: ${self.current_balance:,.2f}")
+            
+        except Exception as e:
+            logging.error(f"Error initializing MT5: {str(e)}")
+    
+    def _initialize_simulation(self):
+        """Initialize simulation mode with default values"""
+        self.current_balance = 10000.0  # Default starting balance
+        self.peak_balance = self.current_balance
+        logging.info(f"Running in simulation mode. Starting balance: ${self.current_balance:,.2f}")
+    
     def _load_risk_metrics(self):
         """Load risk metrics from file"""
         try:
@@ -198,7 +251,19 @@ class RiskManager:
 
     def assess_trade_risk(self, symbol: str, type: str, stop_loss: float, 
                          take_profit: float, other_positions: List[Dict]) -> Dict:
-        """Assess risk for a potential trade"""
+        """
+        Assess the risk of a potential trade
+        
+        Args:
+            symbol (str): Trading symbol
+            type (str): Trade type ('BUY' or 'SELL')
+            stop_loss (float): Stop loss price
+            take_profit (float): Take profit price
+            other_positions (List[Dict]): List of other open positions
+            
+        Returns:
+            Dict: Risk assessment results
+        """
         try:
             self._reset_daily_metrics()
             
@@ -302,4 +367,5 @@ class RiskManager:
 
     def __del__(self):
         """Cleanup when object is destroyed"""
-        mt5.shutdown() 
+        if MT5_AVAILABLE:
+            mt5.shutdown() 

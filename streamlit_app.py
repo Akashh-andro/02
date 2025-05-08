@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 
 # Import trading system components
-from risk_manager import RiskManager
+from risk_manager import RiskManager, MT5_AVAILABLE
 from model_trainer import ForexModelTrainer
 from backtester import ForexBacktester
 from signal_generator import SignalGenerator
@@ -39,10 +39,10 @@ def initialize_session_state():
         st.session_state.market_analyzer = MarketAnalyzer()
     if 'risk_manager' not in st.session_state:
         st.session_state.risk_manager = RiskManager(
-            max_risk_per_trade=1.0,
-            max_daily_risk=5.0,
-            max_correlation=0.7,
-            max_drawdown=20.0
+            max_risk_per_trade=0.02,  # 2% risk per trade
+            max_daily_risk=0.05,      # 5% daily risk
+            max_correlation=0.7,      # 70% max correlation
+            max_drawdown=0.15         # 15% max drawdown
         )
     if 'performance_analyzer' not in st.session_state:
         st.session_state.performance_analyzer = PerformanceAnalyzer()
@@ -60,6 +60,10 @@ def main():
         page_icon="📈",
         layout="wide"
     )
+    
+    # Show MT5 status
+    if not MT5_AVAILABLE:
+        st.warning("MetaTrader5 is not available. Running in simulation mode.")
     
     # Sidebar
     st.sidebar.title("Navigation")
