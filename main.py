@@ -7,6 +7,13 @@ from typing import List, Dict, Optional
 import json
 import time
 import streamlit as st
+import os
+
+# Add the project root directory to Python path
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(project_root)
+
+# Import the Streamlit app
 from app.streamlit_app import main as streamlit_main
 
 from model_trainer import ForexModelTrainer

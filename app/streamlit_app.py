@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import sys
 import os
 import logging
-from risk_manager import RiskManager
 
 # Configure logging
 logging.basicConfig(
@@ -17,10 +16,12 @@ logging.basicConfig(
     ]
 )
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 
 # Import trading system components
+from risk_manager import RiskManager
 from model_trainer import ForexModelTrainer
 from backtester import ForexBacktester
 from signal_generator import SignalGenerator
