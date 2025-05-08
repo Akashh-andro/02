@@ -1,0 +1,51 @@
+{
+    "symbols": [
+        "EURUSDm",
+        "GBPUSDm",
+        "USDJPYm",
+        "AUDUSDm",
+        "USDCADm",
+        "USDCHFm",
+        "EURGBPm",
+        "EURJPYm",
+        "GBPJPYm",
+        "NZDUSDm"
+    ],
+    "timeframe": "M15",
+    "risk_per_trade": 0.02,
+    "max_daily_risk": 0.05,
+    "max_correlation": 0.7,
+    "max_drawdown": 0.15,
+    "model_path": "models/forex_model.h5",
+    "scaler_path": "models/feature_scaler.joblib",
+    "mt5": {
+        "server": "MT5Trial14",
+        "login": "244765238",
+        "password": "354QkSLy"
+    },
+    "trading_hours": {
+        "start": "00:00",
+        "end": "23:59"
+    },
+    "indicators": {
+        "sma": {
+            "short": 20,
+            "medium": 50,
+            "long": 200
+        },
+        "rsi": {
+            "length": 14,
+            "overbought": 70,
+            "oversold": 30
+        },
+        "macd": {
+            "fast": 12,
+            "slow": 26,
+            "signal": 9
+        },
+        "bollinger_bands": {
+            "length": 20,
+            "std_dev": 2.0
+        }
+    }
+} 

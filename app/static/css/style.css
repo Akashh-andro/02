@@ -1,0 +1,106 @@
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --success-color: #2ecc71;
+    --danger-color: #e74c3c;
+    --warning-color: #f1c40f;
+    --light-color: #ecf0f1;
+    --dark-color: #2c3e50;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.sidebar {
+    background-color: var(--primary-color);
+    color: white;
+    height: 100vh;
+    padding: 20px;
+}
+
+.main-content {
+    padding: 20px;
+}
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.card-header {
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 10px 10px 0 0 !important;
+}
+
+.indicator-value {
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+.signal-buy {
+    color: var(--success-color);
+}
+
+.signal-sell {
+    color: var(--danger-color);
+}
+
+.account-summary {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.position-card {
+    border-left: 4px solid var(--secondary-color);
+}
+
+.position-profit {
+    font-weight: bold;
+}
+
+.position-profit.positive {
+    color: var(--success-color);
+}
+
+.position-profit.negative {
+    color: var(--danger-color);
+}
+
+.btn-trading {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.chart-container {
+    height: 400px;
+    margin-bottom: 20px;
+}
+
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.alert {
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .sidebar {
+        height: auto;
+    }
+    
+    .main-content {
+        margin-top: 20px;
+    }
+} 
