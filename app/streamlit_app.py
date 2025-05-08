@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import sys
 import os
 import logging
+from risk_manager import RiskManager
 
 # Configure logging
 logging.basicConfig(
@@ -25,7 +26,6 @@ from backtester import ForexBacktester
 from signal_generator import SignalGenerator
 from position_manager import PositionManager
 from market_analyzer import MarketAnalyzer
-from risk_manager import RiskManager
 from performance_analyzer import PerformanceAnalyzer
 
 def initialize_session_state():
@@ -41,7 +41,12 @@ def initialize_session_state():
     if 'market_analyzer' not in st.session_state:
         st.session_state.market_analyzer = MarketAnalyzer()
     if 'risk_manager' not in st.session_state:
-        st.session_state.risk_manager = RiskManager()
+        st.session_state.risk_manager = RiskManager(
+            max_risk_per_trade=1.0,
+            max_daily_risk=5.0,
+            max_correlation=0.7,
+            max_drawdown=20.0
+        )
     if 'performance_analyzer' not in st.session_state:
         st.session_state.performance_analyzer = PerformanceAnalyzer()
     if 'is_trading' not in st.session_state:
@@ -61,19 +66,15 @@ def main():
     
     # Sidebar
     st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Go to", ["Dashboard", "Trading", "Backtesting", "Analysis", "Settings"])
+    page = st.sidebar.radio("Go to", ["Dashboard", "Risk Management", "Settings"])
     
     # Main content
     st.title("Quantum Forex Trading System")
     
     if page == "Dashboard":
         show_dashboard()
-    elif page == "Trading":
-        show_trading()
-    elif page == "Backtesting":
-        show_backtesting()
-    elif page == "Analysis":
-        show_analysis()
+    elif page == "Risk Management":
+        show_risk_management()
     elif page == "Settings":
         show_settings()
 
@@ -81,161 +82,119 @@ def show_dashboard():
     """Display the trading dashboard"""
     st.header("Trading Dashboard")
     
-    # Market Overview
+    # Risk Overview
+    col1, col2, col3 = st.columns(3)
+    risk_report = st.session_state.risk_manager.get_risk_metrics()
+    
+    with col1:
+        st.metric("Current Capital", f"${risk_report.get('balance', 0):,.2f}")
+    with col2:
+        st.metric("Daily P/L", f"${risk_report.get('daily_pnl', 0):,.2f}")
+    with col3:
+        st.metric("Open Positions", str(risk_report.get('trades_today', 0)))
+    
+    # Risk Metrics
+    st.subheader("Risk Metrics")
+    
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Active Trades", "0", "0%")
+        st.metric("Current Drawdown", f"{risk_report.get('current_drawdown', 0):.2%}")
     with col2:
-        st.metric("Daily P/L", "$0.00", "0%")
+        st.metric("Max Drawdown", f"{risk_report.get('max_drawdown', 0):.2%}")
     with col3:
-        st.metric("Win Rate", "0%", "0%")
-    
-    # Chart
-    st.subheader("Market Analysis")
-    timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "1h", "4h", "1d"])
-    symbol = st.selectbox("Symbol", ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"])
-    
-    # Get market data
-    try:
-        data = st.session_state.market_analyzer.get_market_data(symbol, timeframe)
-        if data is not None:
-            fig = go.Figure(data=[go.Candlestick(
-                x=data.index,
-                open=data['open'],
-                high=data['high'],
-                low=data['low'],
-                close=data['close']
-            )])
-            fig.update_layout(title=f"{symbol} {timeframe} Chart")
-            st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error loading market data: {str(e)}")
-    
-    # Recent Trades
-    st.subheader("Recent Trades")
-    try:
-        trades = st.session_state.performance_analyzer.get_recent_trades()
-        if trades:
-            st.dataframe(trades)
-        else:
-            st.info("No recent trades")
-    except Exception as e:
-        st.error(f"Error loading trades: {str(e)}")
+        st.metric("Daily Risk", f"{risk_report.get('daily_risk', 0):.2%}")
 
-def show_trading():
-    """Display trading controls"""
-    st.header("Trading Controls")
+def show_risk_management():
+    """Display risk management controls"""
+    st.header("Risk Management")
     
-    # Trading Parameters
+    # Risk Parameters
+    st.subheader("Risk Parameters")
     col1, col2 = st.columns(2)
+    
     with col1:
         symbol = st.selectbox("Trading Pair", ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"])
-        lot_size = st.number_input("Lot Size", min_value=0.01, max_value=10.0, value=0.1, step=0.01)
+        entry_price = st.number_input("Entry Price", min_value=0.0, value=1.0, step=0.0001)
     with col2:
-        strategy = st.selectbox("Strategy", ["Quantum", "Trend Following", "Mean Reversion"])
-        risk_percent = st.number_input("Risk %", min_value=0.1, max_value=5.0, value=1.0, step=0.1)
+        stop_loss = st.number_input("Stop Loss", min_value=0.0, value=0.99, step=0.0001)
+        take_profit = st.number_input("Take Profit", min_value=0.0, value=1.01, step=0.0001)
     
-    # Trading Controls
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("Start Trading", type="primary"):
-            try:
-                st.session_state.is_trading = True
-                st.session_state.position_manager.start_trading(symbol, strategy, lot_size, risk_percent)
-                st.success("Trading started successfully")
-            except Exception as e:
-                st.error(f"Error starting trading: {str(e)}")
-    with col2:
-        if st.button("Stop Trading", type="secondary"):
-            try:
-                st.session_state.is_trading = False
-                st.session_state.position_manager.stop_trading()
-                st.success("Trading stopped successfully")
-            except Exception as e:
-                st.error(f"Error stopping trading: {str(e)}")
-    with col3:
-        if st.button("Close All Positions", type="secondary"):
-            try:
-                st.session_state.position_manager.close_all_positions()
-                st.success("All positions closed successfully")
-            except Exception as e:
-                st.error(f"Error closing positions: {str(e)}")
-
-def show_backtesting():
-    """Display backtesting interface"""
-    st.header("Strategy Backtesting")
-    
-    # Backtesting Parameters
-    col1, col2 = st.columns(2)
-    with col1:
-        symbol = st.selectbox("Backtest Pair", ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"])
-        strategy = st.selectbox("Backtest Strategy", ["Quantum", "Trend Following", "Mean Reversion"])
-    with col2:
-        start_date = st.date_input("Start Date", datetime.now() - timedelta(days=365))
-        end_date = st.date_input("End Date", datetime.now())
-    
-    if st.button("Run Backtest", type="primary"):
+    if st.button("Calculate Risk", type="primary"):
         try:
-            results = st.session_state.backtester.run_backtest(
-                symbol, strategy, start_date, end_date
+            assessment = st.session_state.risk_manager.assess_trade_risk(
+                symbol=symbol,
+                type="BUY",
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                other_positions=[]
             )
             
-            # Display Results
-            st.subheader("Backtest Results")
+            st.subheader("Risk Assessment")
             col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Return", f"{results['total_return']:.2f}%")
-            with col2:
-                st.metric("Win Rate", f"{results['win_rate']:.2f}%")
-            with col3:
-                st.metric("Sharpe Ratio", f"{results['sharpe_ratio']:.2f}")
-        except Exception as e:
-            st.error(f"Error running backtest: {str(e)}")
-
-def show_analysis():
-    """Display market analysis"""
-    st.header("Market Analysis")
-    
-    # Technical Analysis
-    symbol = st.selectbox("Analysis Pair", ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"])
-    timeframe = st.selectbox("Analysis Timeframe", ["1m", "5m", "15m", "1h", "4h", "1d"])
-    
-    try:
-        # Get market data and indicators
-        data = st.session_state.market_analyzer.get_market_data(symbol, timeframe)
-        if data is not None:
-            indicators = st.session_state.market_analyzer.calculate_indicators(data)
             
-            # Display indicators
-            st.subheader("Technical Indicators")
-            col1, col2 = st.columns(2)
             with col1:
-                st.write("RSI:", f"{indicators['rsi']:.2f}")
-                st.write("MACD:", f"{indicators['macd']:.2f}")
+                st.metric("Position Size", f"{assessment.get('position_size', 0):.4f}")
             with col2:
-                st.write("Bollinger Bands:", f"{indicators['bb_upper']:.2f} / {indicators['bb_lower']:.2f}")
-                st.write("ATR:", f"{indicators['atr']:.2f}")
-    except Exception as e:
-        st.error(f"Error performing analysis: {str(e)}")
+                st.metric("Risk-Reward Ratio", f"{assessment.get('risk_reward', 0):.2f}")
+            with col3:
+                st.metric("Position Correlation", f"{assessment.get('correlations', {}).get(symbol, 0):.2f}")
+            
+            if assessment.get('allowed', False):
+                st.success("Trade meets risk management criteria")
+            else:
+                st.error(f"Trade rejected: {assessment.get('reason', 'Unknown error')}")
+                
+        except Exception as e:
+            st.error(f"Error calculating risk: {str(e)}")
 
 def show_settings():
-    """Display system settings"""
-    st.header("System Settings")
+    """Display risk management settings"""
+    st.header("Risk Management Settings")
     
-    # API Settings
-    st.subheader("API Configuration")
-    api_key = st.text_input("API Key", type="password")
-    api_secret = st.text_input("API Secret", type="password")
+    # Risk Limits
+    st.subheader("Risk Limits")
+    col1, col2 = st.columns(2)
     
-    # Risk Settings
-    st.subheader("Risk Management")
-    max_daily_loss = st.number_input("Max Daily Loss %", min_value=1.0, max_value=10.0, value=2.0)
-    max_position_size = st.number_input("Max Position Size %", min_value=1.0, max_value=10.0, value=5.0)
+    with col1:
+        max_risk = st.number_input(
+            "Max Risk per Trade (%)", 
+            min_value=0.1, 
+            max_value=5.0, 
+            value=float(st.session_state.risk_manager.max_risk_per_trade * 100),
+            step=0.1
+        )
+        max_correlation = st.number_input(
+            "Max Position Correlation", 
+            min_value=0.0, 
+            max_value=1.0, 
+            value=st.session_state.risk_manager.max_correlation,
+            step=0.1
+        )
     
-    # Save Settings
+    with col2:
+        max_portfolio_risk = st.number_input(
+            "Max Portfolio Risk (%)", 
+            min_value=1.0, 
+            max_value=20.0, 
+            value=float(st.session_state.risk_manager.max_daily_risk * 100),
+            step=1.0
+        )
+        max_drawdown = st.number_input(
+            "Max Drawdown (%)", 
+            min_value=5.0, 
+            max_value=50.0, 
+            value=float(st.session_state.risk_manager.max_drawdown * 100),
+            step=5.0
+        )
+    
     if st.button("Save Settings", type="primary"):
         try:
-            # Save settings logic here
+            # Update risk manager settings
+            st.session_state.risk_manager.max_risk_per_trade = max_risk / 100
+            st.session_state.risk_manager.max_daily_risk = max_portfolio_risk / 100
+            st.session_state.risk_manager.max_correlation = max_correlation
+            st.session_state.risk_manager.max_drawdown = max_drawdown / 100
+            
             st.success("Settings saved successfully!")
         except Exception as e:
             st.error(f"Error saving settings: {str(e)}")

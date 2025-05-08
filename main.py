@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 import json
 import time
 import streamlit as st
-from risk_manager import main as streamlit_main
+from app.streamlit_app import main as streamlit_main
 
 from model_trainer import ForexModelTrainer
 from backtester import ForexBacktester
