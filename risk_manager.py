@@ -5,6 +5,13 @@ except ImportError:
     MT5_AVAILABLE = False
     print("MetaTrader5 not available. Running in simulation mode.")
 
+try:
+    import pandas_ta as ta
+    TA_AVAILABLE = True
+except ImportError:
+    TA_AVAILABLE = False
+    print("pandas_ta not available. Using basic technical analysis.")
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
@@ -12,7 +19,6 @@ from datetime import datetime, timedelta
 import logging
 import json
 from scipy import stats
-import pandas_ta as ta
 
 class RiskManager:
     def __init__(self, max_risk_per_trade: float = 0.02, max_daily_risk: float = 0.05,
@@ -121,36 +127,43 @@ class RiskManager:
                                entry_price: float) -> float:
         """Calculate position size based on risk management"""
         try:
-            # Get account info
-            account_info = mt5.account_info()
-            if account_info is None:
-                raise Exception("Failed to get account info")
-            
-            # Calculate risk amount
-            balance = account_info.balance
-            risk_amount = balance * (self.max_risk_per_trade / 100)
-            
-            # Get symbol info
-            symbol_info = mt5.symbol_info(symbol)
-            if symbol_info is None:
-                raise Exception(f"Failed to get symbol info for {symbol}")
-            
-            # Calculate pip value
-            point = symbol_info.point
-            pip_size = point * 10 if symbol_info.digits == 5 else point
-            
-            # Calculate stop loss in pips
-            sl_distance = abs(entry_price - stop_loss)
-            sl_pips = sl_distance / pip_size
-            
-            # Calculate position size
-            position_size = risk_amount / (sl_pips * symbol_info.trade_tick_value)
-            
-            # Round to symbol's volume step
-            position_size = round(position_size / symbol_info.volume_step) * symbol_info.volume_step
-            
-            # Ensure minimum and maximum volume
-            position_size = max(symbol_info.volume_min, min(position_size, symbol_info.volume_max))
+            if MT5_AVAILABLE:
+                # Get account info
+                account_info = mt5.account_info()
+                if account_info is None:
+                    raise Exception("Failed to get account info")
+                
+                # Calculate risk amount
+                balance = account_info.balance
+                risk_amount = balance * (self.max_risk_per_trade / 100)
+                
+                # Get symbol info
+                symbol_info = mt5.symbol_info(symbol)
+                if symbol_info is None:
+                    raise Exception(f"Failed to get symbol info for {symbol}")
+                
+                # Calculate pip value
+                point = symbol_info.point
+                pip_size = point * 10 if symbol_info.digits == 5 else point
+                
+                # Calculate stop loss in pips
+                sl_distance = abs(entry_price - stop_loss)
+                sl_pips = sl_distance / pip_size
+                
+                # Calculate position size
+                position_size = risk_amount / (sl_pips * symbol_info.trade_tick_value)
+                
+                # Round to symbol's volume step
+                position_size = round(position_size / symbol_info.volume_step) * symbol_info.volume_step
+                
+                # Ensure minimum and maximum volume
+                position_size = max(symbol_info.volume_min, min(position_size, symbol_info.volume_max))
+            else:
+                # Simulation mode
+                balance = self.current_balance
+                risk_amount = balance * self.max_risk_per_trade
+                sl_distance = abs(entry_price - stop_loss)
+                position_size = risk_amount / sl_distance
             
             return position_size
             
@@ -183,30 +196,44 @@ class RiskManager:
                            bars: int = 1000) -> Optional[pd.DataFrame]:
         """Get historical price data"""
         try:
-            # Convert timeframe string to MT5 timeframe
-            tf_map = {
-                "M1": mt5.TIMEFRAME_M1,
-                "M5": mt5.TIMEFRAME_M5,
-                "M15": mt5.TIMEFRAME_M15,
-                "M30": mt5.TIMEFRAME_M30,
-                "H1": mt5.TIMEFRAME_H1,
-                "H4": mt5.TIMEFRAME_H4,
-                "D1": mt5.TIMEFRAME_D1,
-                "W1": mt5.TIMEFRAME_W1,
-                "MN1": mt5.TIMEFRAME_MN1
-            }
-            
-            if timeframe not in tf_map:
-                raise ValueError(f"Invalid timeframe: {timeframe}")
-            
-            # Get historical data
-            rates = mt5.copy_rates_from_pos(symbol, tf_map[timeframe], 0, bars)
-            if rates is None:
-                raise Exception(f"Failed to get historical data for {symbol}")
-            
-            # Convert to DataFrame
-            df = pd.DataFrame(rates)
-            df['time'] = pd.to_datetime(df['time'], unit='s')
+            if MT5_AVAILABLE:
+                # Convert timeframe string to MT5 timeframe
+                tf_map = {
+                    "M1": mt5.TIMEFRAME_M1,
+                    "M5": mt5.TIMEFRAME_M5,
+                    "M15": mt5.TIMEFRAME_M15,
+                    "M30": mt5.TIMEFRAME_M30,
+                    "H1": mt5.TIMEFRAME_H1,
+                    "H4": mt5.TIMEFRAME_H4,
+                    "D1": mt5.TIMEFRAME_D1,
+                    "W1": mt5.TIMEFRAME_W1,
+                    "MN1": mt5.TIMEFRAME_MN1
+                }
+                
+                if timeframe not in tf_map:
+                    raise ValueError(f"Invalid timeframe: {timeframe}")
+                
+                # Get historical data
+                rates = mt5.copy_rates_from_pos(symbol, tf_map[timeframe], 0, bars)
+                if rates is None:
+                    raise Exception(f"Failed to get historical data for {symbol}")
+                
+                # Convert to DataFrame
+                df = pd.DataFrame(rates)
+                df['time'] = pd.to_datetime(df['time'], unit='s')
+            else:
+                # Generate simulated data
+                dates = pd.date_range(end=datetime.now(), periods=bars, freq='H')
+                np.random.seed(42)  # For reproducibility
+                prices = np.random.normal(1.0, 0.01, bars).cumsum() + 1.0
+                df = pd.DataFrame({
+                    'time': dates,
+                    'open': prices,
+                    'high': prices * 1.001,
+                    'low': prices * 0.999,
+                    'close': prices,
+                    'tick_volume': np.random.randint(100, 1000, bars)
+                })
             
             return df
             
@@ -268,11 +295,14 @@ class RiskManager:
             self._reset_daily_metrics()
             
             # Get current price
-            tick = mt5.symbol_info_tick(symbol)
-            if tick is None:
-                raise Exception(f"Failed to get tick data for {symbol}")
-            
-            entry_price = tick.ask if type == "BUY" else tick.bid
+            if MT5_AVAILABLE:
+                tick = mt5.symbol_info_tick(symbol)
+                if tick is None:
+                    raise Exception(f"Failed to get tick data for {symbol}")
+                entry_price = tick.ask if type == "BUY" else tick.bid
+            else:
+                # Use provided stop loss and take profit to estimate entry price
+                entry_price = (stop_loss + take_profit) / 2
             
             # Calculate position size
             position_size = self._calculate_position_size(symbol, stop_loss, entry_price)
@@ -280,12 +310,15 @@ class RiskManager:
                 return {"allowed": False, "reason": "Invalid position size"}
             
             # Calculate risk amount
-            account_info = mt5.account_info()
-            if account_info is None:
-                raise Exception("Failed to get account info")
-            
-            risk_amount = abs(entry_price - stop_loss) * position_size * account_info.trade_tick_value
-            risk_percent = (risk_amount / account_info.balance) * 100
+            if MT5_AVAILABLE:
+                account_info = mt5.account_info()
+                if account_info is None:
+                    raise Exception("Failed to get account info")
+                risk_amount = abs(entry_price - stop_loss) * position_size * account_info.trade_tick_value
+                risk_percent = (risk_amount / account_info.balance) * 100
+            else:
+                risk_amount = abs(entry_price - stop_loss) * position_size
+                risk_percent = (risk_amount / self.current_balance) * 100
             
             # Check daily risk limit
             if self.risk_metrics["daily_risk"] + risk_percent > self.max_daily_risk:
