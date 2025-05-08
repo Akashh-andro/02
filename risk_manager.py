@@ -7,6 +7,8 @@ import logging
 import json
 from scipy import stats
 import pandas_ta as ta
+import streamlit as st
+import plotly.graph_objects as go
 
 class RiskManager:
     def __init__(self, max_risk_per_trade: float = 1.0, max_daily_risk: float = 5.0,
@@ -304,31 +306,164 @@ class RiskManager:
         """Cleanup when object is destroyed"""
         mt5.shutdown()
 
+def initialize_session_state():
+    """Initialize Streamlit session state variables"""
+    if 'risk_manager' not in st.session_state:
+        st.session_state.risk_manager = RiskManager(
+            max_risk_per_trade=1.0,
+            max_daily_risk=5.0,
+            max_correlation=0.7,
+            max_drawdown=20.0
+        )
+    if 'is_trading' not in st.session_state:
+        st.session_state.is_trading = False
+
 def main():
-    # Example usage
-    risk_manager = RiskManager(
-        max_risk_per_trade=1.0,
-        max_daily_risk=5.0,
-        max_correlation=0.7,
-        max_drawdown=20.0
+    """Main Streamlit application"""
+    # Initialize session state
+    initialize_session_state()
+    
+    # Page config
+    st.set_page_config(
+        page_title="Quantum Forex Trading System",
+        page_icon="📈",
+        layout="wide"
     )
     
-    # Assess trade risk
-    risk_assessment = risk_manager.assess_trade_risk(
-        symbol="EURUSD",
-        type="BUY",
-        stop_loss=1.0500,
-        take_profit=1.0700,
-        other_positions=[]
-    )
+    # Sidebar
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio("Go to", ["Dashboard", "Risk Management", "Settings"])
     
-    print("Risk Assessment:")
-    print(json.dumps(risk_assessment, indent=2))
+    # Main content
+    st.title("Quantum Forex Trading System")
     
-    # Get risk metrics
-    metrics = risk_manager.get_risk_metrics()
-    print("\nRisk Metrics:")
-    print(json.dumps(metrics, indent=2))
+    if page == "Dashboard":
+        show_dashboard()
+    elif page == "Risk Management":
+        show_risk_management()
+    elif page == "Settings":
+        show_settings()
+
+def show_dashboard():
+    """Display the trading dashboard"""
+    st.header("Trading Dashboard")
+    
+    # Risk Overview
+    col1, col2, col3 = st.columns(3)
+    risk_report = st.session_state.risk_manager.get_risk_metrics()
+    
+    with col1:
+        st.metric("Current Capital", f"${risk_report['balance']:,.2f}")
+    with col2:
+        st.metric("Daily P/L", f"${risk_report['daily_pnl']:,.2f}")
+    with col3:
+        st.metric("Open Positions", str(risk_report['trades_today']))
+    
+    # Risk Metrics
+    st.subheader("Risk Metrics")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Current Drawdown", f"{risk_report['current_drawdown']:.2%}")
+    with col2:
+        st.metric("Max Drawdown", f"{risk_report['max_drawdown']:.2%}")
+    with col3:
+        st.metric("Daily Risk", f"{risk_report['daily_risk']:.2%}")
+
+def show_risk_management():
+    """Display risk management controls"""
+    st.header("Risk Management")
+    
+    # Risk Parameters
+    st.subheader("Risk Parameters")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        symbol = st.selectbox("Trading Pair", ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"])
+        entry_price = st.number_input("Entry Price", min_value=0.0, value=1.0, step=0.0001)
+    with col2:
+        stop_loss = st.number_input("Stop Loss", min_value=0.0, value=0.99, step=0.0001)
+        take_profit = st.number_input("Take Profit", min_value=0.0, value=1.01, step=0.0001)
+    
+    if st.button("Calculate Risk", type="primary"):
+        try:
+            assessment = st.session_state.risk_manager.assess_trade_risk(
+                symbol=symbol,
+                type="BUY",
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                other_positions=[]
+            )
+            
+            st.subheader("Risk Assessment")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Position Size", f"{assessment['position_size']:.4f}")
+            with col2:
+                st.metric("Risk-Reward Ratio", f"{assessment['risk_reward']:.2f}")
+            with col3:
+                st.metric("Position Correlation", f"{assessment['correlations'].get(symbol, 0.0):.2f}")
+            
+            if assessment['allowed']:
+                st.success("Trade meets risk management criteria")
+            else:
+                st.error(f"Trade rejected: {assessment['reason']}")
+                
+        except Exception as e:
+            st.error(f"Error calculating risk: {str(e)}")
+
+def show_settings():
+    """Display risk management settings"""
+    st.header("Risk Management Settings")
+    
+    # Risk Limits
+    st.subheader("Risk Limits")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        max_risk = st.number_input(
+            "Max Risk per Trade (%)", 
+            min_value=0.1, 
+            max_value=5.0, 
+            value=float(st.session_state.risk_manager.max_risk_per_trade * 100),
+            step=0.1
+        )
+        max_correlation = st.number_input(
+            "Max Position Correlation", 
+            min_value=0.0, 
+            max_value=1.0, 
+            value=st.session_state.risk_manager.max_correlation,
+            step=0.1
+        )
+    
+    with col2:
+        max_portfolio_risk = st.number_input(
+            "Max Portfolio Risk (%)", 
+            min_value=1.0, 
+            max_value=20.0, 
+            value=float(st.session_state.risk_manager.max_daily_risk * 100),
+            step=1.0
+        )
+        max_drawdown = st.number_input(
+            "Max Drawdown (%)", 
+            min_value=5.0, 
+            max_value=50.0, 
+            value=float(st.session_state.risk_manager.max_drawdown * 100),
+            step=5.0
+        )
+    
+    if st.button("Save Settings", type="primary"):
+        try:
+            # Update risk manager settings
+            st.session_state.risk_manager.max_risk_per_trade = max_risk / 100
+            st.session_state.risk_manager.max_daily_risk = max_portfolio_risk / 100
+            st.session_state.risk_manager.max_correlation = max_correlation
+            st.session_state.risk_manager.max_drawdown = max_drawdown / 100
+            
+            st.success("Settings saved successfully!")
+        except Exception as e:
+            st.error(f"Error saving settings: {str(e)}")
 
 if __name__ == "__main__":
     main() 
